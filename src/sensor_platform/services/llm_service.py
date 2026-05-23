@@ -5,7 +5,11 @@ from __future__ import annotations
 import re
 
 from sensor_platform.domain.models import MetricResult, QualityReport
-from sensor_platform.domain.prompts import health_summary_prompt, quality_report_prompt
+from sensor_platform.domain.prompts import (
+    health_summary_prompt,
+    quality_report_prompt,
+    query_prompt,
+)
 from sensor_platform.ports.llm_client import LLMClient
 
 
@@ -38,5 +42,11 @@ class LLMService:
     def summarize_quality(self, station_id: str, report: QualityReport) -> str:
         """Generate plain-English data quality summary from a stored quality report."""
         system, user = quality_report_prompt(station_id, report)
+        raw = self._client.generate(system, user, max_tokens=512)
+        return _strip_markdown(raw)
+
+    def answer_query(self, station_id: str, metrics: list[MetricResult], question: str) -> str:
+        """Answer a free-text question about a station using its stored metrics as context."""
+        system, user = query_prompt(station_id, metrics, question)
         raw = self._client.generate(system, user, max_tokens=512)
         return _strip_markdown(raw)

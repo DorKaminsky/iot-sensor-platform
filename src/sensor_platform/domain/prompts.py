@@ -20,6 +20,24 @@ def health_summary_prompt(station_id: str, metrics: list[MetricResult]) -> tuple
     return system, user
 
 
+def query_prompt(station_id: str, metrics: list[MetricResult], question: str) -> tuple[str, str]:
+    """Return (system, user) prompts for answering a free-text question about station metrics."""
+    system = (
+        "You are an industrial IoT analyst with access to compressor station metrics. "
+        "Answer the operator's question based only on the provided metrics data. "
+        "Be concise and specific — cite device IDs and metric values where relevant. "
+        "If the data is insufficient to answer the question, say so clearly. "
+        "Respond with plain text only — no markdown, no bullet points, no headers."
+    )
+    lines = "\n".join(
+        f"  {m.device_id} | {m.metric_name}: {m.value:.2f}"
+        f" | {m.start_time.date()} to {m.end_time.date()}"
+        for m in metrics
+    )
+    user = f"Station {station_id} metrics:\n{lines}\n\nQuestion: {question}"
+    return system, user
+
+
 def quality_report_prompt(station_id: str, report: QualityReport) -> tuple[str, str]:
     """Return (system, user) prompts for a station data quality summary."""
     system = (

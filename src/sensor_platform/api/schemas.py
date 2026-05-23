@@ -62,3 +62,13 @@ class QualityReportSummaryResponse(BaseModel):
     station_id: str
     quality_score: float
     summary: str
+
+
+class QueryRequest(BaseModel):
+    question: str = Field(..., description="Free-text question about the station's metrics")
+
+
+class QueryResponse(BaseModel):
+    station_id: str
+    question: str
+    answer: str

@@ -217,3 +217,56 @@ class TestSummarizeQuality:
         assert "**" not in result
         assert "`" not in result
         assert "Quality" in result
+
+
+class TestAnswerQuery:
+    def test_returns_llm_response(self) -> None:
+        mock = _MockLLMClient("Device dev-A has the highest pressure at 8.4 bar.")
+        svc = LLMService(mock)
+        result = svc.answer_query("s1", [_metric("avg_pressure", 8.4)], "Highest pressure?")
+        assert result == "Device dev-A has the highest pressure at 8.4 bar."
+
+    def test_calls_llm_once(self) -> None:
+        mock = _MockLLMClient()
+        svc = LLMService(mock)
+        svc.answer_query("s1", [_metric("avg_pressure", 8.0)], "What is the pressure?")
+        assert len(mock.calls) == 1
+
+    def test_prompt_contains_station_id(self) -> None:
+        mock = _MockLLMClient()
+        svc = LLMService(mock)
+        svc.answer_query("my-station-7", [_metric("avg_pressure", 8.0)], "test?")
+        _, user = mock.calls[0]
+        assert "my-station-7" in user
+
+    def test_prompt_contains_question(self) -> None:
+        mock = _MockLLMClient()
+        svc = LLMService(mock)
+        question = "Which device has the highest uptime?"
+        svc.answer_query("s1", [_metric("avg_pressure", 8.0)], question)
+        _, user = mock.calls[0]
+        assert question in user
+
+    def test_prompt_contains_metric_values(self) -> None:
+        mock = _MockLLMClient()
+        svc = LLMService(mock)
+        metrics = [_metric("avg_pressure", 8.25), _metric("uptime_pct", 95.0)]
+        svc.answer_query("s1", metrics, "?")
+        _, user = mock.calls[0]
+        assert "avg_pressure" in user
+        assert "8.25" in user
+        assert "uptime_pct" in user
+
+    def test_propagates_llm_error(self) -> None:
+        mock = _MockLLMClient(raises=LLMError("down"))
+        svc = LLMService(mock)
+        with pytest.raises(LLMError, match="down"):
+            svc.answer_query("s1", [_metric("avg_pressure", 8.0)], "?")
+
+    def test_markdown_stripped_from_response(self) -> None:
+        mock = _MockLLMClient("**Device A** has `8.4` bar pressure.")
+        svc = LLMService(mock)
+        result = svc.answer_query("s1", [_metric("avg_pressure", 8.4)], "?")
+        assert "**" not in result
+        assert "`" not in result
+        assert "Device A" in result
