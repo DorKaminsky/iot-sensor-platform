@@ -51,3 +51,8 @@ class StationSchema(BaseModel):
     location: str
     commissioned_date: str
     num_compressors: int
+
+
+class SummaryResponse(BaseModel):
+    station_id: str
+    summary: str

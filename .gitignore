@@ -10,3 +10,4 @@ dist/
 metrics.db
 docs/
 sensor_data.db
+.env

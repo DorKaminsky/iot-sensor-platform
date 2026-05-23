@@ -1,0 +1,36 @@
+"""LLMService — orchestrates prompt construction and LLM generation."""
+
+from __future__ import annotations
+
+import re
+
+from sensor_platform.domain.models import MetricResult
+from sensor_platform.domain.prompts import health_summary_prompt
+from sensor_platform.ports.llm_client import LLMClient
+
+
+def _strip_markdown(text: str) -> str:
+    """Remove common markdown syntax so responses are plain readable text."""
+    # Headers: ## Title → Title
+    text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
+    # Bold/italic: **text**, *text*, __text__, _text_
+    text = re.sub(r"\*{1,2}([^*]+)\*{1,2}", r"\1", text)
+    text = re.sub(r"_{1,2}([^_]+)_{1,2}", r"\1", text)
+    # Inline code: `text`
+    text = re.sub(r"`([^`]+)`", r"\1", text)
+    # Bullet points: leading "- " or "* "
+    text = re.sub(r"^\s*[-*]\s+", "", text, flags=re.MULTILINE)
+    # Collapse multiple blank lines into one
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+class LLMService:
+    def __init__(self, llm_client: LLMClient) -> None:
+        self._client = llm_client
+
+    def summarize_health(self, station_id: str, metrics: list[MetricResult]) -> str:
+        """Generate plain-English health summary from stored metrics."""
+        system, user = health_summary_prompt(station_id, metrics)
+        raw = self._client.generate(system, user, max_tokens=512)
+        return _strip_markdown(raw)

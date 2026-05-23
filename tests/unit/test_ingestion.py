@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 import pandas as pd
 import pytest
 
-from sensor_platform.domain.models import SENSOR_COLUMNS
 from sensor_platform.domain.schema import Schema
 from sensor_platform.services.ingestion import (
     _apply_missing_strategy,

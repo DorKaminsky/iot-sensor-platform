@@ -5,7 +5,7 @@ from __future__ import annotations
 import uvicorn
 from fastapi import FastAPI
 
-from sensor_platform.api.routes import health, metrics
+from sensor_platform.api.routes import health, llm, metrics
 
 
 def create_app() -> FastAPI:
@@ -16,6 +16,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(health.router)
     app.include_router(metrics.router)
+    app.include_router(llm.router)
     return app
 
 
