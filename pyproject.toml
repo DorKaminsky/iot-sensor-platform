@@ -1,0 +1,58 @@
+[project]
+name = "sensor-platform"
+version = "0.1.0"
+description = "Industrial IoT sensor data ingestion library and metrics service"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.29.0",
+    "pydantic>=2.6.0",
+    "pydantic-settings>=2.1.0",
+    "pandas>=2.2.0",
+    "openai>=1.14.0",
+    "tenacity>=8.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.1.0",
+    "pytest-cov>=4.1.0",
+    "pytest-asyncio>=0.23.0",
+    "httpx>=0.27.0",
+    "ruff>=0.4.0",
+    "mypy>=1.9.0",
+    "pandas-stubs>=2.2.0",
+]
+
+[project.scripts]
+sensor-api = "sensor_platform.api.app:run"
+sensor-consumer = "consumer.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sensor_platform"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+mypy_path = "src"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "--cov=sensor_platform --cov-report=term-missing -q"
+
+[tool.coverage.run]
+source = ["src/sensor_platform"]
