@@ -11,9 +11,11 @@ from sensor_platform.domain.models import (
     MetricResult,
     MissingStrategy,
     ProcessingResult,
+    QualityReport,
     Station,
 )
 from sensor_platform.ports.metrics_store import MetricsStore
+from sensor_platform.ports.quality_report_store import QualityReportStore
 from sensor_platform.services.ingestion import IngestionService
 
 _DEFAULT_METRICS = [
@@ -26,9 +28,15 @@ _DEFAULT_METRICS = [
 
 
 class MetricsService:
-    def __init__(self, ingestion: IngestionService, store: MetricsStore) -> None:
+    def __init__(
+        self,
+        ingestion: IngestionService,
+        store: MetricsStore,
+        quality_store: QualityReportStore | None = None,
+    ) -> None:
         self._ingestion = ingestion
         self._store = store
+        self._quality_store = quality_store
 
     def process_station(
         self,
@@ -78,6 +86,9 @@ class MetricsService:
         if results:
             self._store.save(results)
 
+        if self._quality_store is not None:
+            self._quality_store.save(station_id, quality_report)
+
         return ProcessingResult(
             station_id=station_id,
             metrics=results,
@@ -99,6 +110,12 @@ class MetricsService:
             start_time=start_time,
             end_time=end_time,
         )
+
+    def get_quality_report(self, station_id: str) -> QualityReport | None:
+        """Return the stored quality report for a station, or None if not yet processed."""
+        if self._quality_store is None:
+            return None
+        return self._quality_store.get(station_id)
 
     def list_stations(self) -> list[Station]:
         return self._ingestion._source.read_stations()

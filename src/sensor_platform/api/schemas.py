@@ -56,3 +56,9 @@ class StationSchema(BaseModel):
 class SummaryResponse(BaseModel):
     station_id: str
     summary: str
+
+
+class QualityReportSummaryResponse(BaseModel):
+    station_id: str
+    quality_score: float
+    summary: str

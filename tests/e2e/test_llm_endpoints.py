@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from sensor_platform.adapters.sqlite_metrics_store import SQLiteMetricsStore
+from sensor_platform.adapters.sqlite_quality_report_store import SQLiteQualityReportStore
 from sensor_platform.adapters.sqlite_source import SQLiteDataSource
 from sensor_platform.api.app import create_app
 from sensor_platform.api.dependencies import (
@@ -15,6 +16,7 @@ from sensor_platform.api.dependencies import (
     get_llm_service,
     get_metrics_service,
     get_metrics_store,
+    get_quality_report_store,
 )
 from sensor_platform.domain.schema import Schema
 from sensor_platform.services.ingestion import IngestionService
@@ -33,14 +35,16 @@ class _StubLLMClient:
 @pytest.fixture
 def client(tmp_path: Path) -> TestClient:
     store = SQLiteMetricsStore(tmp_path / "metrics.db")
+    qr_store = SQLiteQualityReportStore(tmp_path / "metrics.db")
     source = SQLiteDataSource(_REPO / "sensor_data.db")
     schema = Schema.from_file(_REPO / "sensor_schema.json")
     ingestion = IngestionService(source, schema)
-    svc = MetricsService(ingestion, store)
+    svc = MetricsService(ingestion, store, qr_store)
     llm_svc = LLMService(_StubLLMClient())  # type: ignore[arg-type]
 
     app = create_app()
     app.dependency_overrides[get_metrics_store] = lambda: store
+    app.dependency_overrides[get_quality_report_store] = lambda: qr_store
     app.dependency_overrides[get_ingestion_service] = lambda: ingestion
     app.dependency_overrides[get_metrics_service] = lambda: svc
     app.dependency_overrides[get_llm_service] = lambda: llm_svc
@@ -82,10 +86,11 @@ class TestSummarizeEndpoint:
         from sensor_platform.domain.exceptions import LLMError
 
         store = SQLiteMetricsStore(tmp_path / "metrics.db")
+        qr_store = SQLiteQualityReportStore(tmp_path / "metrics.db")
         source = SQLiteDataSource(_REPO / "sensor_data.db")
         schema = Schema.from_file(_REPO / "sensor_schema.json")
         ingestion = IngestionService(source, schema)
-        svc = MetricsService(ingestion, store)
+        svc = MetricsService(ingestion, store, qr_store)
 
         class _FailingLLM:
             def generate(self, system: str, user: str, max_tokens: int = 2048) -> str:
@@ -95,6 +100,7 @@ class TestSummarizeEndpoint:
 
         app = create_app()
         app.dependency_overrides[get_metrics_store] = lambda: store
+        app.dependency_overrides[get_quality_report_store] = lambda: qr_store
         app.dependency_overrides[get_ingestion_service] = lambda: ingestion
         app.dependency_overrides[get_metrics_service] = lambda: svc
         app.dependency_overrides[get_llm_service] = lambda: llm_svc
@@ -105,5 +111,64 @@ class TestSummarizeEndpoint:
             json={"resample_freq": "1h"},
         )
         resp = c.post(f"/stations/{STATION_ID}/summarize")
+        assert resp.status_code == 503
+        assert "LLM unavailable" in resp.json()["detail"]
+
+
+class TestQualityReportEndpoint:
+    def test_404_when_no_report_stored(self, client: TestClient) -> None:
+        resp = client.post(f"/stations/{STATION_ID}/quality-report")
+        assert resp.status_code == 404
+        assert "No quality report found" in resp.json()["detail"]
+
+    def test_returns_report_after_process(self, client: TestClient) -> None:
+        client.post(
+            f"/stations/{STATION_ID}/process",
+            json={
+                "resample_freq": "1h",
+                "start_time": "2024-02-01T00:00:00Z",
+                "end_time": "2024-02-02T00:00:00Z",
+            },
+        )
+        resp = client.post(f"/stations/{STATION_ID}/quality-report")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["station_id"] == STATION_ID
+        assert "quality_score" in body
+        assert 0.0 <= body["quality_score"] <= 100.0
+        assert len(body["summary"]) > 10
+
+    def test_summary_comes_from_llm(self, client: TestClient) -> None:
+        client.post(f"/stations/{STATION_ID}/process", json={"resample_freq": "1h"})
+        resp = client.post(f"/stations/{STATION_ID}/quality-report")
+        assert resp.status_code == 200
+        assert resp.json()["summary"] == "Station is running at 92% uptime with stable pressure."
+
+    def test_503_when_llm_raises(self, tmp_path: Path) -> None:
+        from sensor_platform.domain.exceptions import LLMError
+
+        store = SQLiteMetricsStore(tmp_path / "metrics2.db")
+        qr_store = SQLiteQualityReportStore(tmp_path / "metrics2.db")
+        source = SQLiteDataSource(_REPO / "sensor_data.db")
+        schema = Schema.from_file(_REPO / "sensor_schema.json")
+        ingestion = IngestionService(source, schema)
+        svc = MetricsService(ingestion, store, qr_store)
+
+        class _FailingLLM:
+            def generate(self, system: str, user: str, max_tokens: int = 2048) -> str:
+                raise LLMError("LLM is down")
+
+        llm_svc = LLMService(_FailingLLM())  # type: ignore[arg-type]
+
+        app = create_app()
+        app.dependency_overrides[get_metrics_store] = lambda: store
+        app.dependency_overrides[get_quality_report_store] = lambda: qr_store
+        app.dependency_overrides[get_ingestion_service] = lambda: ingestion
+        app.dependency_overrides[get_metrics_service] = lambda: svc
+        app.dependency_overrides[get_llm_service] = lambda: llm_svc
+
+        c = TestClient(app)
+        c.post(f"/stations/{STATION_ID}/process", json={"resample_freq": "1h"})
+        resp = c.post(f"/stations/{STATION_ID}/quality-report")
         assert resp.status_code == 503
         assert "LLM unavailable" in resp.json()["detail"]

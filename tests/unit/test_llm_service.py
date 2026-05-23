@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import pytest
 
 from sensor_platform.domain.exceptions import LLMError
-from sensor_platform.domain.models import MetricResult
+from sensor_platform.domain.models import FlatlineSegment, MetricResult, QualityReport
 from sensor_platform.services.llm_service import LLMService, _strip_markdown
 
 
@@ -148,3 +148,72 @@ class TestStripMarkdown:
 
     def test_strips_leading_trailing_whitespace(self) -> None:
         assert _strip_markdown("  hello  ") == "hello"
+
+
+def _make_report(
+    total_rows: int = 1000,
+    nulls: dict[str, int] | None = None,
+    oob: dict[str, int] | None = None,
+    flatlines: int = 0,
+) -> QualityReport:
+    t = datetime(2024, 2, 1, tzinfo=UTC)
+    segs = [
+        FlatlineSegment("dev-A", "discharge_pressure", t, t, 30.0, 8.0)
+        for _ in range(flatlines)
+    ]
+    return QualityReport(
+        total_rows=total_rows,
+        null_counts=nulls or {"discharge_pressure": 0},
+        out_of_range_counts=oob or {"discharge_pressure": 0},
+        flatline_segments=segs,
+    )
+
+
+class TestSummarizeQuality:
+    def test_returns_llm_response(self) -> None:
+        mock = _MockLLMClient("Data quality is poor.")
+        svc = LLMService(mock)
+        result = svc.summarize_quality("s1", _make_report())
+        assert result == "Data quality is poor."
+
+    def test_calls_llm_once(self) -> None:
+        mock = _MockLLMClient()
+        svc = LLMService(mock)
+        svc.summarize_quality("s1", _make_report())
+        assert len(mock.calls) == 1
+
+    def test_prompt_contains_station_id(self) -> None:
+        mock = _MockLLMClient()
+        svc = LLMService(mock)
+        svc.summarize_quality("my-station-99", _make_report())
+        _, user = mock.calls[0]
+        assert "my-station-99" in user
+
+    def test_prompt_contains_quality_score(self) -> None:
+        mock = _MockLLMClient()
+        svc = LLMService(mock)
+        report = _make_report(total_rows=1000, nulls={"discharge_pressure": 100})
+        svc.summarize_quality("s1", report)
+        _, user = mock.calls[0]
+        assert str(report.quality_score) in user
+
+    def test_prompt_contains_flatline_count(self) -> None:
+        mock = _MockLLMClient()
+        svc = LLMService(mock)
+        svc.summarize_quality("s1", _make_report(flatlines=5))
+        _, user = mock.calls[0]
+        assert "5" in user
+
+    def test_propagates_llm_error(self) -> None:
+        mock = _MockLLMClient(raises=LLMError("timeout"))
+        svc = LLMService(mock)
+        with pytest.raises(LLMError, match="timeout"):
+            svc.summarize_quality("s1", _make_report())
+
+    def test_markdown_stripped_from_response(self) -> None:
+        mock = _MockLLMClient("**Quality** is _low_. Score: `45.0`.")
+        svc = LLMService(mock)
+        result = svc.summarize_quality("s1", _make_report())
+        assert "**" not in result
+        assert "`" not in result
+        assert "Quality" in result

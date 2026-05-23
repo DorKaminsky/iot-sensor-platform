@@ -9,6 +9,7 @@ from pathlib import Path
 from sensor_platform.adapters.claude_adapter import ClaudeAdapter
 from sensor_platform.adapters.ollama_adapter import OllamaAdapter
 from sensor_platform.adapters.sqlite_metrics_store import SQLiteMetricsStore
+from sensor_platform.adapters.sqlite_quality_report_store import SQLiteQualityReportStore
 from sensor_platform.adapters.sqlite_source import SQLiteDataSource
 from sensor_platform.config import get_settings
 from sensor_platform.domain.exceptions import LLMConfigError
@@ -41,13 +42,18 @@ def get_metrics_store() -> SQLiteMetricsStore:
 
 
 @lru_cache
+def get_quality_report_store() -> SQLiteQualityReportStore:
+    return SQLiteQualityReportStore(_METRICS_DB)
+
+
+@lru_cache
 def get_ingestion_service() -> IngestionService:
     return IngestionService(get_data_source(), get_schema())
 
 
 @lru_cache
 def get_metrics_service() -> MetricsService:
-    return MetricsService(get_ingestion_service(), get_metrics_store())
+    return MetricsService(get_ingestion_service(), get_metrics_store(), get_quality_report_store())
 
 
 @lru_cache
