@@ -24,7 +24,7 @@ The schema is loaded at runtime from `sensor_schema.json`, not baked into the co
 
 **For breaking changes** (column rename, unit change):
 
-- **Rename:** Add an alias mapping in `Schema` — the library normalises `rpm` → `motor_speed` internally. Consumers are never exposed to the old name.
+- **Rename:** We would add an alias mapping in `Schema` — the library would normalise `rpm` → `motor_speed` internally on read. Consumers are never exposed to the old name.
 - **Unit change:** Embed the unit in the schema (`"unit": "bar"`) and add a conversion layer in `SQLiteDataSource` — so the library always emits SI units regardless of what the database stores.
 - **New schema version:** The schema file carries a `"version"` field. The library validates that it can handle the loaded version and raises a clear `SchemaVersionError` if not, rather than silently processing with wrong assumptions.
 
