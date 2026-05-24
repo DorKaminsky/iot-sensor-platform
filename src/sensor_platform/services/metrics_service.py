@@ -120,6 +120,26 @@ class MetricsService:
     def list_stations(self) -> list[Station]:
         return self._ingestion._source.read_stations()
 
+    def process_all_stations(
+        self,
+        resample_freq: str,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        missing_strategy: MissingStrategy = "drop",
+        metric_names: list[str] | None = None,
+    ) -> list[ProcessingResult]:
+        return [
+            self.process_station(
+                station_id=station.station_id,
+                resample_freq=resample_freq,
+                start_time=start_time,
+                end_time=end_time,
+                missing_strategy=missing_strategy,
+                metric_names=metric_names,
+            )
+            for station in self.list_stations()
+        ]
+
 
 def _compute(name: str, df: pd.DataFrame, freq_minutes: float) -> float | None:
     if name == "total_flow_volume":

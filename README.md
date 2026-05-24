@@ -11,7 +11,7 @@ Industrial IoT sensor data ingestion library and metrics service for compressed 
 
 ```bash
 git clone <repo>
-cd take-home-assignment
+cd iot-sensor-platform
 uv sync --extra dev
 ```
 

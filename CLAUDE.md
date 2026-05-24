@@ -2,47 +2,71 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## What This Is
+## Commands
 
-A take-home assignment starter kit for building an industrial IoT data platform in Python. The repository currently contains only the provided assets — **no implementation exists yet**. The assignment requires building from scratch.
+```bash
+uv sync --extra dev          # install all dependencies
 
-**Provided assets (do not modify):**
-- `sensor_data.db` — SQLite database with 30 days of compressor sensor data (tables: `sensor_readings`, `station_metadata`)
-- `sensor_schema.json` — Schema with column types, valid ranges, and flatline thresholds per sensor
-- `producer.py` — Event producer for Challenge 3; publishes `SensorEvent` dicts into a `queue.Queue`, ends stream with `None` sentinel
+uv run pytest                # all tests + coverage (requires sensor_data.db)
+uv run pytest tests/unit     # unit tests only — no DB, fast
+uv run pytest tests/integration
+uv run pytest tests/e2e
+uv run pytest tests/unit/test_metrics.py::TestUptimePct  # single test class
 
-## Assignment Scope
+uv run ruff check src tests  # lint
+uv run ruff format --check src tests
+uv run mypy src              # type check
 
-**Challenge 1 (required):** Reusable ingestion library + FastAPI metrics service + tests + design doc  
-**Challenge 2 (optional):** LLM-powered endpoint on top of Challenge 1  
-**Challenge 3 (optional):** Event-driven consumer for the `producer.py` queue  
-
-## Database Schema
-
-**`sensor_readings`:** `timestamp`, `station_id`, `device_id`, `discharge_pressure` (bar, 0–16), `air_flow_rate` (m³/h, 0–600), `power_consumption` (kW, 0–350), `motor_speed` (RPM int, 0–4000), `discharge_temp` (°C, -10–120)
-
-**`station_metadata`:** `station_id`, `station_name`, `location`, `commissioned_date`, `num_compressors`
-
-**Data quality issues in the DB:** missing values, gaps, sensor flatlines, noisy readings.
-
-## Producer Contract (Challenge 3)
-
-```python
-from producer import SensorEventProducer
-import queue
-
-q = queue.Queue()
-producer = SensorEventProducer(db_path="sensor_data.db", event_queue=q)
-producer.start()
-# stream ends with None sentinel
+uv run sensor-api            # start API server at http://localhost:8000
 ```
 
-`SensorEvent` fields: `event_id`, `event_type`, `timestamp` (ISO 8601), `station_id`, `device_id`, `readings` (dict of sensor→float|int|None), `metadata`. Producer injects ~2% malformed events by default.
+## Architecture
 
-## Intended Architecture
+Hexagonal (Ports & Adapters). Dependencies point inward only:
 
-The library must be **framework-agnostic** with an abstract data access layer so the backing store (SQLite → BigQuery) can be swapped without changing consumers. The API service is a thin wrapper over the library. For Challenge 3, the queue transport must be swappable (in-memory → Redis Streams/Pub/Sub) without changing processing logic.
+```
+API  →  Services  →  Ports  ←  Adapters
+                 →  Domain  ←  Adapters
+```
 
-## Python Version
+**`src/sensor_platform/`**
+- `domain/` — pure Python, no I/O: `models.py` (dataclasses), `schema.py` (loads `sensor_schema.json`), `quality.py` (null/OOB/flatline detection), `metrics.py` (5 compute functions + `METRIC_REGISTRY`), `prompts.py` (LLM prompt builders), `exceptions.py`
+- `ports/` — Protocol interfaces: `DataSource`, `MetricsStore`, `QualityReportStore`, `LLMClient`, `EventTransport`
+- `adapters/` — concrete implementations: `SQLiteDataSource` (reads `sensor_data.db`), `SQLiteMetricsStore` + `SQLiteQualityReportStore` (write to `metrics.db`), `ClaudeAdapter`, `OllamaAdapter`, `QueueTransport`
+- `services/` — orchestration: `IngestionService` (fetch→quality→clean→resample), `MetricsService` (ingest→compute→store), `LLMService` (prompt→generate→strip)
+- `api/` — thin FastAPI wrapper: `app.py`, `dependencies.py` (all services wired with `@lru_cache`), `schemas.py` (Pydantic models), `routes/`
 
-Python 3.11+ required (per `take-home-README.txt`).
+## Key Design Points
+
+**Two databases:** `sensor_data.db` is read-only source data. `metrics.db` is the derived store (computed metrics + quality reports). Never write to `sensor_data.db`.
+
+**Swap point:** `api/dependencies.py:get_data_source()` is the single line to change for BigQuery. Same pattern for LLM provider: `LLM_PROVIDER=ollama` in `.env` swaps Claude for Ollama.
+
+**`@lru_cache` on all dependency functions** — each service/store is constructed once per process. Tests override with `app.dependency_overrides[get_metrics_service] = lambda: mock`.
+
+**Quality report is computed on raw data before cleaning** — intentional. Post-clean report would show 0 nulls after dropping them, which is misleading.
+
+**`resample_freq` is required with no default** — the right granularity is use-case specific; a silent default would produce silently wrong results.
+
+## Adding a New Metric
+
+1. Write `compute_my_metric(df: pd.DataFrame) -> float` in `domain/metrics.py`
+2. Add it to `METRIC_REGISTRY`
+3. Done — `MetricsService` picks it up by name automatically
+
+If the metric needs `freq_minutes` (like `total_flow_volume`), add a branch in `_compute()` instead.
+
+## Environment
+
+Copy `.env.example` to `.env` for LLM features:
+```
+LLM_PROVIDER=claude
+ANTHROPIC_API_KEY=sk-ant-...
+```
+`.env` is gitignored — never commit it.
+
+## Test Layout
+
+- `tests/unit/` — synthetic DataFrames, no DB, millisecond speed
+- `tests/integration/` — real `sensor_data.db`, tests full ingestion pipeline
+- `tests/e2e/` — `TestClient` + `dependency_overrides`, tests full HTTP stack

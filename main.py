@@ -1,5 +1,5 @@
 def main():
-    print("Hello from take-home-assignment!")
+    print("Hello from iot-sensor-platform!")
 
 
 if __name__ == "__main__":

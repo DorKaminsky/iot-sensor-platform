@@ -4,15 +4,15 @@ install:
 	uv sync --extra dev
 
 lint:
-	uv run --extra dev ruff check src tests
+	uv run ruff check src tests
 
 format:
-	uv run --extra dev ruff format src tests
+	uv run ruff format src tests
 
 typecheck:
-	uv run --extra dev mypy src
+	uv run mypy src
 
 test:
-	uv run --extra dev pytest tests/ -v
+	uv run pytest tests/ -v
 
 check: lint typecheck test
