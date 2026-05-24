@@ -10,7 +10,7 @@ from sensor_platform.domain.exceptions import LLMError
 
 class ClaudeAdapter:
     def __init__(self, api_key: str, model: str = "claude-sonnet-4-5") -> None:
-        self._client = anthropic.Anthropic(api_key=api_key)
+        self._client = anthropic.Anthropic(api_key=api_key, timeout=30.0)
         self._model = model
 
     @retry(

@@ -20,6 +20,10 @@ class TestClaudeAdapter:
         resp.content = [block]
         return resp
 
+    def test_client_has_explicit_timeout(self) -> None:
+        adapter = ClaudeAdapter(api_key="test-key")
+        assert adapter._client.timeout == 30.0
+
     def test_returns_text_on_success(self) -> None:
         with patch("sensor_platform.adapters.claude_adapter.anthropic.Anthropic") as mock_cls:
             mock_cls.return_value.messages.create.return_value = self._mock_response("hello")
