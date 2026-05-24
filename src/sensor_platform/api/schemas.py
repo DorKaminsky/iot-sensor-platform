@@ -34,6 +34,7 @@ class QualityReportSchema(BaseModel):
     total_rows: int
     null_counts: dict[str, int]
     out_of_range_counts: dict[str, int]
+    type_errors: dict[str, int]
     flatline_count: int
     quality_score: float
 

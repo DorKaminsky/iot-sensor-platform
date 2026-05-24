@@ -17,12 +17,14 @@ def build_quality_report(df: pd.DataFrame, schema: Schema) -> QualityReport:
     null_counts = {col: int(df[col].isna().sum()) for col in sensor_cols}
     out_of_range = _count_out_of_range(df, schema, sensor_cols)
     flatlines = _detect_flatlines(df, schema, sensor_cols)
+    type_errors = _count_type_errors(df, schema, sensor_cols)
 
     return QualityReport(
         total_rows=len(df),
         null_counts=null_counts,
         out_of_range_counts=out_of_range,
         flatline_segments=flatlines,
+        type_errors=type_errors,
     )
 
 
@@ -126,3 +128,27 @@ def _maybe_add_segment(
                 value=value,
             )
         )
+
+
+def _count_type_errors(df: pd.DataFrame, schema: Schema, cols: list[str]) -> dict[str, int]:
+    """Count non-null values that cannot be coerced to the schema-declared type."""
+    result: dict[str, int] = {}
+    for col in cols:
+        spec = schema.columns.get(col)
+        if spec is None:
+            result[col] = 0
+            continue
+        non_null = df[col].dropna()
+        if spec.type == "integer":
+            # A value is a type error if it has a non-zero fractional part
+            errors = int((non_null % 1 != 0).sum())
+        elif spec.type == "float":
+            try:
+                pd.to_numeric(non_null, errors="raise")
+                errors = 0
+            except (ValueError, TypeError):
+                errors = int(pd.to_numeric(non_null, errors="coerce").isna().sum())
+        else:
+            errors = 0
+        result[col] = errors
+    return result

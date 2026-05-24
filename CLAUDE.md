@@ -56,6 +56,10 @@ API  →  Services  →  Ports  ←  Adapters
 
 If the metric needs `freq_minutes` (like `total_flow_volume`), add a branch in `_compute()` instead.
 
+## Adding a New Sensor Column
+
+`sensor_schema.json` and `SENSOR_COLUMNS` in `domain/models.py` must both be updated. Columns absent from `SENSOR_COLUMNS` are silently ignored by ingestion, quality checks, and all metrics — the schema alone is not enough.
+
 ## Environment
 
 Copy `.env.example` to `.env` for LLM features:

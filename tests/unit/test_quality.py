@@ -150,7 +150,46 @@ class TestFlatlineDetection:
         assert flatlines[1].value == pytest.approx(12.0)
 
 
-class TestQualityScore:
+class TestTypeErrors:
+    def test_no_type_errors_for_clean_data(self, schema) -> None:  # type: ignore[no-untyped-def]
+        df = pd.DataFrame([_base_row(i) for i in range(5)])
+        report = build_quality_report(df, schema)
+        assert all(v == 0 for v in report.type_errors.values())
+
+    def test_detects_float_in_integer_column(self, schema) -> None:  # type: ignore[no-untyped-def]
+        rows = [_base_row(i) for i in range(5)]
+        rows[0]["motor_speed"] = 1500.7  # fractional — not a valid integer
+        rows[1]["motor_speed"] = 1200.1
+        df = pd.DataFrame(rows)
+        report = build_quality_report(df, schema)
+        assert report.type_errors["motor_speed"] == 2
+
+    def test_whole_number_floats_not_flagged(self, schema) -> None:  # type: ignore[no-untyped-def]
+        # 1500.0 is representable as integer — should not be a type error
+        rows = [_base_row(i) for i in range(5)]
+        rows[0]["motor_speed"] = 1500.0
+        df = pd.DataFrame(rows)
+        report = build_quality_report(df, schema)
+        assert report.type_errors["motor_speed"] == 0
+
+    def test_nulls_not_counted_as_type_errors(self, schema) -> None:  # type: ignore[no-untyped-def]
+        rows = [_base_row(i) for i in range(5)]
+        rows[0]["motor_speed"] = None
+        df = pd.DataFrame(rows)
+        report = build_quality_report(df, schema)
+        assert report.type_errors["motor_speed"] == 0
+
+    def test_type_errors_included_in_quality_score(self, schema) -> None:  # type: ignore[no-untyped-def]
+        clean = pd.DataFrame([_base_row(i) for i in range(10)])
+        # Build the dirty df with motor_speed as float column so pandas accepts fractional values
+        dirty_rows = [_base_row(i) for i in range(10)]
+        dirty_df = pd.DataFrame(dirty_rows)
+        dirty_df["motor_speed"] = dirty_df["motor_speed"].astype(float)
+        dirty_df.loc[:4, "motor_speed"] = 1500.7
+        clean_score = build_quality_report(clean, schema).quality_score
+        dirty_score = build_quality_report(dirty_df, schema).quality_score
+        assert dirty_score < clean_score
+
     def test_perfect_data_scores_high(self, schema) -> None:  # type: ignore[no-untyped-def]
         df = pd.DataFrame([_base_row(i) for i in range(10)])
         report = build_quality_report(df, schema)

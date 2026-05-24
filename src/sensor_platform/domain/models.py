@@ -42,6 +42,7 @@ class QualityReport:
     null_counts: dict[str, int]
     out_of_range_counts: dict[str, int]
     flatline_segments: list[FlatlineSegment]
+    type_errors: dict[str, int] = field(default_factory=dict)
 
     @property
     def null_pct(self) -> dict[str, float]:
@@ -51,10 +52,14 @@ class QualityReport:
 
     @property
     def quality_score(self) -> float:
-        """0–100: 100 = perfect data, penalises nulls, out-of-range, and flatlines."""
+        """0–100: 100 = perfect data, penalises nulls, out-of-range, type errors, and flatlines."""
         if self.total_rows == 0:
             return 0.0
-        total_issues = sum(self.null_counts.values()) + sum(self.out_of_range_counts.values())
+        total_issues = (
+            sum(self.null_counts.values())
+            + sum(self.out_of_range_counts.values())
+            + sum(self.type_errors.values())
+        )
         issue_rate = total_issues / (self.total_rows * len(SENSOR_COLUMNS))
         flatline_penalty = min(len(self.flatline_segments) * 2, 20)
         return max(0.0, round((1 - issue_rate) * 100 - flatline_penalty, 1))

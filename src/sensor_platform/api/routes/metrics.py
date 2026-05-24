@@ -49,6 +49,7 @@ def process_station(
             total_rows=result.quality_report.total_rows,
             null_counts=result.quality_report.null_counts,
             out_of_range_counts=result.quality_report.out_of_range_counts,
+            type_errors=result.quality_report.type_errors,
             flatline_count=len(result.quality_report.flatline_segments),
             quality_score=result.quality_report.quality_score,
         ),
