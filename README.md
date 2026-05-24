@@ -45,6 +45,9 @@ uv run sensor-api
 | `GET` | `/stations/` | List all stations |
 | `POST` | `/stations/{id}/process` | Ingest data, compute and store metrics |
 | `GET` | `/stations/{id}/metrics` | Query stored metrics |
+| `POST` | `/stations/{id}/summarize` | LLM health summary (requires `/process` first) |
+| `POST` | `/stations/{id}/quality-report` | LLM quality report summary (requires `/process` first) |
+| `POST` | `/stations/{id}/query` | Free-text question answering over stored metrics |
 
 ### Process a station (example)
 
@@ -69,6 +72,30 @@ curl -X POST http://localhost:8000/stations/d43f07f0-0170-5663-a459-04597edb38b6
 curl "http://localhost:8000/stations/d43f07f0-0170-5663-a459-04597edb38b6/metrics?metric_name=uptime_pct"
 ```
 
+### LLM endpoints (optional)
+
+Requires a `.env` file in the repo root:
+
+```
+LLM_PROVIDER=claude
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+```bash
+# Health summary
+curl -X POST http://localhost:8000/stations/d43f07f0-0170-5663-a459-04597edb38b6/summarize
+
+# Quality report summary
+curl -X POST http://localhost:8000/stations/d43f07f0-0170-5663-a459-04597edb38b6/quality-report
+
+# Free-text question
+curl -X POST http://localhost:8000/stations/d43f07f0-0170-5663-a459-04597edb38b6/query \
+  -H "Content-Type: application/json" \
+  -d '{"question": "Which device has the highest average pressure?"}'
+```
+
+To use a local Ollama model instead: set `LLM_PROVIDER=ollama` (no API key needed).
+
 ## Computed metrics
 
 | Metric | Definition |
@@ -83,14 +110,14 @@ curl "http://localhost:8000/stations/d43f07f0-0170-5663-a459-04597edb38b6/metric
 
 ```
 sensor_platform/
-├── domain/       Pure business logic — metrics, quality detection, schema. No I/O.
-├── ports/        Protocols (interfaces) for DataSource, MetricsStore, EventTransport.
-├── adapters/     Concrete implementations — SQLite, queue.Queue.
-├── services/     IngestionService, MetricsService — orchestration only.
+├── domain/       Pure business logic — metrics, quality detection, schema, prompts. No I/O.
+├── ports/        Protocols (interfaces) for DataSource, MetricsStore, LLMClient, QualityReportStore, EventTransport.
+├── adapters/     Concrete implementations — SQLite, Claude, Ollama, queue.Queue.
+├── services/     IngestionService, MetricsService, LLMService — orchestration only.
 └── api/          FastAPI thin wrapper over services.
 ```
 
-**Key design decision:** The library (`sensor_platform`) is framework-agnostic — it can be imported by any Python service without pulling in FastAPI. Backing stores are swappable via the `DataSource` and `MetricsStore` protocols; changing from SQLite to BigQuery requires only a new adapter class.
+**Key design decision:** The library (`sensor_platform`) is framework-agnostic — it can be imported by any Python service without pulling in FastAPI. Backing stores are swappable via the `DataSource` and `MetricsStore` protocols; changing from SQLite to BigQuery requires only a new adapter class. The same pattern applies to LLM providers — `LLM_PROVIDER=ollama` swaps Claude for a local Ollama instance with no code change.
 
 See `DESIGN.md` for answers to library versioning, schema evolution, and CI/CD questions.
 
