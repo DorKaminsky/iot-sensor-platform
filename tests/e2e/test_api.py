@@ -85,7 +85,7 @@ class TestGetMetricsEndpoint:
     def test_query_before_process_returns_404(self, client: TestClient) -> None:
         resp = client.get(f"/stations/{STATION_ID}/metrics")
         assert resp.status_code == 404
-        assert "Run POST" in resp.json()["detail"]
+        assert "No metrics found" in resp.json()["detail"]
         client.post(
             f"/stations/{STATION_ID}/process",
             json={

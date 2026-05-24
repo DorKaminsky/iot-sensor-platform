@@ -76,6 +76,6 @@ def get_metrics(
     if not results:
         raise HTTPException(
             status_code=404,
-            detail=f"No metrics found for station {station_id!r}. Run POST /stations/{station_id}/process first.",
+            detail=f"No metrics found for station {station_id!r}. Run /process first.",
         )
     return [MetricResultSchema(**r.__dict__) for r in results]
